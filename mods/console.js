@@ -320,449 +320,98 @@
     });
 
     // --- CONSOLE COMMANDS ---
-    // Initialize console immediately
-    window.modConsole.createUI();
+        // --- Add SELECT tool to Special category in Sandboxels ---
+    function addSelectToolToSpecialCategory() {
+        if (typeof toolOrder === "undefined" || typeof tools === "undefined") {
+            window.modConsole.log("Sandboxels toolOrder/tools not yet available. Retrying shortly...", "warning");
+            setTimeout(addSelectToolToSpecialCategory, 1000);
+            return;
+        }
 
-    // Helper to get game dimensions (assuming 'width' and 'height' are global from Sandboxels engine)
-    function getGameCanvasDimensions() {
-        if (typeof width !== 'undefined' && typeof height !== 'undefined') {
-            return { width: width, height: height };
+        if (tools.select) {
+            window.modConsole.log("SELECT tool already exists. Skipping redefinition.", "info");
+            return;
         }
-        // Fallback if game globals aren't immediately available
-        const gameCanvas = document.querySelector('canvas');
-        if (gameCanvas) {
-            return { width: gameCanvas.width, height: gameCanvas.height }; // This might be pixel size, not grid size
+
+        tools.select = {
+            name: "Select",
+            category: "special",
+            tool: function () {
+                isHighlightToolActive = !isHighlightToolActive;
+
+                if (isHighlightToolActive) {
+                    window.modConsole.log("SELECT tool activated. Drag on canvas to select an area.", "info");
+                } else {
+                    isDraggingSelection = false;
+                    window.modConsole.log("SELECT tool deactivated.", "info");
+                }
+            },
+            desc: "Drag to select an area for console commands"
+        };
+
+        if (!toolOrder.special.includes("select")) {
+            toolOrder.special.push("select");
         }
-        return { width: 0, height: 0 };
+
+        window.modConsole.log("SELECT tool added to Special category.", "success");
     }
 
-    // Helper to parse range arguments or use stored_range
-    function parseRangeArgs(args) {
-        let range = null;
-        if (args.length === 1 && args[0].toLowerCase() === 'stored_range') {
-            range = window.modConsole.storedRange;
-            if (!range) {
-                window.modConsole.log('No stored range available. Select an area first or provide coordinates.', 'error');
-                return null;
-            }
-        } else if (args.length === 4) {
-            const [x1, y1, x2, y2] = args.map(Number);
-            if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) {
-                window.modConsole.log('Invalid range coordinates. Usage: <command> x1 y1 x2 y2 or <command> stored_range', 'error');
-                return null;
-            }
-            range = { x1: Math.min(x1, x2), y1: Math.min(y1, y2), x2: Math.max(x1, x2), y2: Math.max(y1, y2) };
-        } else {
-            window.modConsole.log('Invalid number of arguments for range. Usage: <command> x1 y1 x2 y2 or <command> stored_range', 'error');
-            return null;
-        }
-        return range;
-    }
-
-    // Register default commands
-    window.modConsole.registerCommand('spawn', 'Spawn element at cursor (usage: spawn <element> [amount])', function(args) {
-        if (args.length === 0) {
-            window.modConsole.log('Usage: spawn <element> [amount]', 'error');
-            return;
-        }
-        
-        const element = args[0];
-        const amount = parseInt(args[1]) || 1;
-        
-        if (typeof elements === 'undefined' || !elements[element]) {
-            window.modConsole.log(`Element '${element}' does not exist or 'elements' is not defined.`, 'error');
-            return;
-        }
-        
-        const x = typeof mousePos !== 'undefined' && mousePos ? mousePos.x : (typeof width !== 'undefined' ? Math.floor(width/2) : 0);
-        const y = typeof mousePos !== 'undefined' && mousePos ? mousePos.y : (typeof height !== 'undefined' ? Math.floor(height/2) : 0);
-        
-        if (typeof createPixel === 'undefined' || typeof isEmpty === 'undefined') {
-            window.modConsole.log('Game functions (createPixel, isEmpty) not available. Make sure the game is loaded.', 'error');
-            return;
-        }
-
-        let spawnedCount = 0;
-        for (let i = 0; i < amount; i++) {
-            const offsetX = Math.floor(Math.random() * 10) - 5;
-            const offsetY = Math.floor(Math.random() * 10) - 5;
-            if (x + offsetX >= 0 && x + offsetX < width && y + offsetY >= 0 && y + offsetY < height && isEmpty(x + offsetX, y + offsetY)) {
-                createPixel(element, x + offsetX, y + offsetY);
-                spawnedCount++;
-            }
-        }
-        
-        window.modConsole.log(`Spawned ${spawnedCount} ${element}(s)`, 'success');
-    });
-
-    window.modConsole.registerCommand('clear_area', 'Clear pixels in a radius (usage: clear_area <size>)', function(args) {
-        const size = parseInt(args[0]) || 10;
-        const x = typeof mousePos !== 'undefined' && mousePos ? mousePos.x : (typeof width !== 'undefined' ? Math.floor(width/2) : 0);
-        const y = typeof mousePos !== 'undefined' && mousePos ? mousePos.y : (typeof height !== 'undefined' ? Math.floor(height/2) : 0);
-        
-        if (typeof deletePixel === 'undefined' || typeof isEmpty === 'undefined' || typeof width === 'undefined' || typeof height === 'undefined') {
-            window.modConsole.log('Game functions (deletePixel, isEmpty) or dimensions not available. Make sure the game is loaded.', 'error');
-            return;
-        }
-
-        let cleared = 0;
-        for (let i = x - size; i <= x + size; i++) {
-            for (let j = y - size; j <= y + size; j++) {
-                if (i >= 0 && i < width && j >= 0 && j < height && !isEmpty(i, j)) {
-                    deletePixel(i, j);
-                    cleared++;
-                }
-            }
-        }
-        
-        window.modConsole.log(`Cleared ${cleared} pixels in ${size*2}x${size*2} area around cursor`, 'success');
-    });
-
-    window.modConsole.registerCommand('clear_range', 'Clear pixels in a specified range (usage: clear_range x1 y1 x2 y2 | clear_range stored_range)', function(args) {
-        const range = parseRangeArgs(args);
-        if (!range) return;
-
-        if (typeof deletePixel === 'undefined' || typeof isEmpty === 'undefined' || typeof width === 'undefined' || typeof height === 'undefined') {
-            window.modConsole.log('Game functions (deletePixel, isEmpty) or dimensions not available. Make sure the game is loaded.', 'error');
-            return;
-        }
-
-        let cleared = 0;
-        for (let x = range.x1; x <= range.x2; x++) {
-            for (let y = range.y1; y <= range.y2; y++) {
-                if (x >= 0 && x < width && y >= 0 && y < height && !isEmpty(x, y)) {
-                    deletePixel(x, y);
-                    cleared++;
-                }
-            }
-        }
-        window.modConsole.log(`Cleared ${cleared} pixels in range [${range.x1},${range.y1},${range.x2},${range.y2}]`, 'success');
-    });
-
-    window.modConsole.registerCommand('spawn_in_range', 'Spawn element in a specified range (usage: spawn_in_range <element> [amount] x1 y1 x2 y2 | spawn_in_range <element> [amount] stored_range)', function(args) {
-        if (args.length < 2) {
-            window.modConsole.log('Usage: spawn_in_range <element> [amount] x1 y1 x2 y2 | spawn_in_range <element> [amount] stored_range', 'error');
-            return;
-        }
-
-        const element = args[0];
-        let amount = 1;
-        let rangeArgsStartIndex = 1;
-
-        if (!isNaN(parseInt(args[1])) && args.length >= 5) {
-            amount = parseInt(args[1]);
-            rangeArgsStartIndex = 2;
-        } else if (args.length >= 5 || (args.length === 2 && args[1].toLowerCase() === 'stored_range')) {
-            amount = 1; // Default amount if not specified
-            rangeArgsStartIndex = 1;
-        } else {
-             window.modConsole.log('Usage: spawn_in_range <element> [amount] x1 y1 x2 y2 | spawn_in_range <element> [amount] stored_range', 'error');
-             return;
-        }
-
-        const range = parseRangeArgs(args.slice(rangeArgsStartIndex));
-        if (!range) return;
-
-        if (typeof elements === 'undefined' || !elements[element]) {
-            window.modConsole.log(`Element '${element}' does not exist or 'elements' is not defined.`, 'error');
-            return;
-        }
-        if (typeof createPixel === 'undefined' || typeof isEmpty === 'undefined' || typeof width === 'undefined' || typeof height === 'undefined') {
-            window.modConsole.log('Game functions (createPixel, isEmpty) or dimensions not available. Make sure the game is loaded.', 'error');
-            return;
-        }
-
-        let spawnedCount = 0;
-        for (let i = 0; i < amount; i++) {
-            const randX = Math.floor(Math.random() * (range.x2 - range.x1 + 1)) + range.x1;
-            const randY = Math.floor(Math.random() * (range.y2 - range.y1 + 1)) + range.y1;
-
-            if (randX >= 0 && randX < width && randY >= 0 && randY < height && isEmpty(randX, randY)) {
-                createPixel(element, randX, randY);
-                spawnedCount++;
-            }
-        }
-        window.modConsole.log(`Spawned ${spawnedCount} ${element}(s) in range [${range.x1},${range.y1},${range.x2},${range.y2}]`, 'success');
-    });
-
-    window.modConsole.registerCommand('list_elements', 'List all available elements', function(args) {
-        if (typeof elements === 'undefined') {
-            window.modConsole.log("'elements' object not available.", 'error');
-            return;
-        }
-        const elementList = Object.keys(elements).sort();
-        window.modConsole.log(`Available elements (${elementList.length}):`, 'info');
-        elementList.forEach(element => {
-            window.modConsole.log(`  ${element}`, 'info');
-        });
-    });
-
-    window.modConsole.registerCommand('element_info', 'Get information about an element (usage: element_info <element>)', function(args) {
-        if (args.length === 0) {
-            window.modConsole.log('Usage: element_info <element>', 'error');
-            return;
-        }
-        
-        const element = args[0];
-        if (typeof elements === 'undefined' || !elements[element]) {
-            window.modConsole.log(`Element '${element}' does not exist or 'elements' is not defined.`, 'error');
-            return;
-        }
-        
-        const info = elements[element];
-        window.modConsole.log(`Information for '${element}':`, 'info');
-        window.modConsole.log(`  Color: ${info.color}`, 'info');
-        window.modConsole.log(`  Category: ${info.category}`, 'info');
-        window.modConsole.log(`  State: ${info.state}`, 'info');
-        window.modConsole.log(`  Density: ${info.density}`, 'info');
-        window.modConsole.log(`  Temperature: ${info.temp}`, 'info');
-    });
-
-    window.modConsole.registerCommand('pause', 'Pause/unpause the simulation', function(args) {
-        if (typeof paused === 'undefined') {
-            window.modConsole.log("'paused' variable not available.", 'error');
-            return;
-        }
-        paused = !paused;
-        window.modConsole.log(`Simulation ${paused ? 'paused' : 'resumed'}`, 'success');
-    });
-
-    window.modConsole.registerCommand('reset', 'Clear the entire simulation', function(args) {
-        if (typeof confirm !== 'function' || typeof width === 'undefined' || typeof height === 'undefined' || typeof isEmpty === 'undefined' || typeof deletePixel === 'undefined') {
-            window.modConsole.log('Required game functions or variables (confirm, width, height, isEmpty, deletePixel) not available. Make sure the game is loaded.', 'error');
-            return;
-        }
-
-        if (confirm('Are you sure you want to clear everything? This cannot be undone!')) {
-            for (let x = 0; x < width; x++) {
-                for (let y = 0; y < height; y++) {
-                    if (!isEmpty(x, y)) {
-                        deletePixel(x, y);
-                    }
-                }
-            }
-            window.modConsole.log('Simulation cleared', 'success');
-        } else {
-            window.modConsole.log('Simulation reset cancelled.', 'info');
-        }
-    });
-
-    window.modConsole.registerCommand('get_canvas_range', 'Get the full range of the game canvas', function(args) {
-        const dims = getGameCanvasDimensions();
-        if (dims.width === 0 || dims.height === 0) {
-            window.modConsole.log('Canvas dimensions not available. Make sure the game is loaded.', 'error');
-            return;
-        }
-        window.modConsole.log(`Canvas range: [0, 0, ${dims.width - 1}, ${dims.height - 1}]`, 'info');
-    });
-
-    window.modConsole.registerCommand('view_stored_range', 'View the currently stored selected range', function(args) {
-        if (window.modConsole.storedRange) {
-            const r = window.modConsole.storedRange;
-            window.modConsole.log(`Stored range: [${r.x1}, ${r.y1}, ${r.x2}, ${r.y2}]`, 'info');
-            updateSelectionHighlight(r.x1, r.y1, r.x2, r.y2); // Re-highlight for visual confirmation
-        } else {
-            window.modConsole.log('No range currently stored. Activate the SELECT tool and drag to select an area.', 'info');
-        }
-    });
-
-    window.modConsole.registerCommand('edit_stored_range', 'Edit or clear the stored range (usage: edit_stored_range set x1 y1 x2 y2 | edit_stored_range clear)', function(args) {
-        if (args.length === 0) {
-            window.modConsole.log('Usage: edit_stored_range set x1 y1 x2 y2 | edit_stored_range clear', 'error');
-            return;
-        }
-
-        const action = args[0].toLowerCase();
-        if (action === 'set') {
-            if (args.length !== 5) {
-                window.modConsole.log('Usage: edit_stored_range set x1 y1 x2 y2', 'error');
-                return;
-            }
-            const [x1, y1, x2, y2] = args.slice(1).map(Number);
-            if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) {
-                window.modConsole.log('Invalid coordinates for setting range.', 'error');
-                return;
-            }
-            window.modConsole.storedRange = { x1: Math.min(x1, x2), y1: Math.min(y1, y2), x2: Math.max(x1, x2), y2: Math.max(y1, y2) };
-            window.modConsole.log(`Stored range set to: [${window.modConsole.storedRange.x1}, ${window.modConsole.storedRange.y1}, ${window.modConsole.storedRange.x2}, ${window.modConsole.storedRange.y2}]`, 'success');
-            updateSelectionHighlight(window.modConsole.storedRange.x1, window.modConsole.storedRange.y1, window.modConsole.storedRange.x2, window.modConsole.storedRange.y2);
-        } else if (action === 'clear') {
-            window.modConsole.storedRange = null;
-            clearSelectionHighlight();
-            window.modConsole.log('Stored range cleared.', 'success');
-        } else {
-            window.modConsole.log('Invalid action. Use "set" or "clear".', 'error');
-        }
-    });
-
-    // Log console initialization
-    window.modConsole.log('Mod Console initialized!', 'system');
-    window.modConsole.log('Press F12 or ` to toggle console. Drag on canvas with SELECT tool for area selection.', 'system');
-    window.modConsole.log('Type "help" for available commands.', 'system');
-
-
-    // --- Automatic button placement logic for Console and Highlight tool ---
-    let consoleButtonAdded = false;
-    let highlightToolButtonAdded = false;
-    let highlightToolButton = null; // Reference to the actual button element
-
-    const defaultButtonStyles = `
-        padding: 6px 10px;
-        margin: 2px;
-        cursor: pointer;
-        border-radius: 5px;
-        font-size: 14px;
-        font-weight: bold;
-        transition: background-color 0.1s ease, box-shadow 0.1s ease;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-        color: white;
-        border: 1px solid #777;
-        background-color: #555;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 2px 2px rgba(0,0,0,0.3);
-    `;
-
-    const activeToolStyles = `
-        background-color: rgba(255, 255, 0, 0.5); /* Yellowish active */
-        border: 1px solid rgba(255, 255, 0, 0.8);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 0 10px rgba(255,255,0,0.7);
-    `;
-
+    // Add Console button to the UI as before
     function addConsoleButtonToMainUI() {
-        if (consoleButtonAdded) return;
+        if (document.getElementById("console-mod-button")) return;
         let targetContainer = null;
-        const commonUISelctors = [ '#controls', '#ui-panel', '.main-controls', '.sidebar', '#game-ui', '.game-wrapper' ];
-        for (const selector of commonUISelctors) {
+        const selectors = [ '#controls', '#ui-panel', '.main-controls', '.sidebar', '#game-ui', '.game-wrapper' ];
+        for (const selector of selectors) {
             targetContainer = document.querySelector(selector);
             if (targetContainer) break;
         }
-        
         if (!targetContainer) {
-            window.modConsole.log('No specific UI container found for console button. Falling back to appending to document.body (top-left).', 'warning');
+            window.modConsole.log("No UI container found. Falling back to body.", "warning");
             targetContainer = document.body;
         }
 
-        const consoleButton = document.createElement('button');
-        consoleButton.id = 'console-mod-button';
-        consoleButton.textContent = 'Console';
-        consoleButton.style.cssText = defaultButtonStyles + `
-            min-width: 80px; /* Give it a consistent width */
+        const btn = document.createElement('button');
+        btn.id = 'console-mod-button';
+        btn.textContent = 'Console';
+        btn.style.cssText = `
+            padding: 6px 10px;
+            margin: 2px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            color: white;
+            border: 1px solid #777;
             background-color: #555;
-            border-color: #777;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 2px 2px rgba(0,0,0,0.3);
+            min-width: 80px;
         `;
+        btn.onmouseover = () => btn.style.backgroundColor = '#777';
+        btn.onmouseout = () => btn.style.backgroundColor = '#555';
+        btn.onclick = () => window.modConsole.toggle();
+
         if (targetContainer === document.body) {
-             consoleButton.style.position = 'fixed';
-             consoleButton.style.top = '10px';
-             consoleButton.style.left = '10px';
-             consoleButton.style.zIndex = '9999';
+            btn.style.position = 'fixed';
+            btn.style.top = '10px';
+            btn.style.left = '10px';
+            btn.style.zIndex = '9999';
         }
-        consoleButton.onmouseover = () => consoleButton.style.backgroundColor = '#777';
-        consoleButton.onmouseout = () => consoleButton.style.backgroundColor = '#555';
-        consoleButton.onclick = () => window.modConsole.toggle();
-        targetContainer.appendChild(consoleButton);
-        consoleButtonAdded = true;
-        window.modConsole.log('Console button added to UI.', 'system');
+
+        targetContainer.appendChild(btn);
+        window.modConsole.log("Console button added to UI.", "system");
     }
 
-    function addHighlightToolButtonToToolbar() {
-        if (highlightToolButtonAdded) return;
-
-        // Try to find the exact toolbar shown in the image
-        // Based on common Sandboxels structure, it might be an element containing other buttons
-        // Let's look for a div that contains common tool button classes/ids or specific text
-        const possibleToolbars = document.querySelectorAll('div[id*="tool"], div[class*="tool"], div[id*="control"], div[class*="control"]');
-        let targetToolbar = null;
-
-        for (const toolbarCandidate of possibleToolbars) {
-            // Check if it contains buttons like "Heat" or "Cool"
-            const hasHeatButton = toolbarCandidate.querySelector('button[id*="heat"], button[class*="heat"], button:contains("Heat")');
-            const hasCoolButton = toolbarCandidate.querySelector('button[id*="cool"], button[class*="cool"], button:contains("Cool")');
-            if (hasHeatButton && hasCoolButton) {
-                targetToolbar = toolbarCandidate;
-                break;
-            }
-        }
-
-        if (!targetToolbar) {
-            window.modConsole.log('Could not find the main tool selection bar. Highlight Tool button not added there.', 'warning');
-            return;
-        }
-
-        highlightToolButton = document.createElement('button');
-        highlightToolButton.id = 'highlight-tool-button';
-        highlightToolButton.textContent = 'SELECT'; // Use "SELECT" for the button text
-        highlightToolButton.style.cssText = defaultButtonStyles; // Apply default button styles
-
-        // Add to the toolbar
-        targetToolbar.appendChild(highlightToolButton);
-        highlightToolButtonAdded = true;
-        window.modConsole.log('Highlight Tool button added to the toolbar.', 'system');
-
-        // Logic for Highlight Tool button click
-        highlightToolButton.onclick = () => {
-            isHighlightToolActive = !isHighlightToolActive;
-
-            // Update button visual state
-            if (isHighlightToolActive) {
-                highlightToolButton.style.cssText = defaultButtonStyles + activeToolStyles;
-                window.modConsole.log('Highlight Tool activated. Drag on canvas to select area.', 'info');
-
-                // If any other tool button is "active" (visually), try to deactivate it.
-                // This is a heuristic and might need adjustment depending on Sandboxels' exact CSS
-                const otherActiveButtons = targetToolbar.querySelectorAll('button[style*="box-shadow"]:not(#highlight-tool-button)');
-                otherActiveButtons.forEach(btn => {
-                    btn.style.boxShadow = defaultButtonStyles.match(/box-shadow: ([^;]+)/)[1];
-                    btn.style.backgroundColor = defaultButtonStyles.match(/background-color: ([^;]+)/)[1];
-                    btn.style.borderColor = defaultButtonStyles.match(/border: 1px solid ([^;]+)/)[1];
-                });
-
-            } else {
-                highlightToolButton.style.cssText = defaultButtonStyles; // Reset to inactive style
-                window.modConsole.log('Highlight Tool deactivated. Mouse returns to normal game functions.', 'info');
-                isDraggingSelection = false; // Stop any ongoing drag
-                // Do NOT clear stored range or highlight here, as user might want to keep it visible
-                // and use it with console commands.
-            }
-        };
-
-        // Add a general click listener to the toolbar to deactivate our tool
-        // if another one is clicked. This is a heuristic and depends on how Sandboxels handles clicks.
-        targetToolbar.addEventListener('click', (e) => {
-            if (e.target.tagName === 'BUTTON' && e.target.id !== 'highlight-tool-button' && isHighlightToolActive) {
-                isHighlightToolActive = false;
-                highlightToolButton.style.cssText = defaultButtonStyles;
-                window.modConsole.log(`Other tool (${e.target.textContent}) clicked. Highlight Tool deactivated.`, 'info');
-            }
-        });
-    }
-
-    // Use MutationObserver for robust button placement.
-    const observerConfig = { childList: true, subtree: true };
-    const observerTarget = document.body;
-
-    const observer = new MutationObserver((mutations, obs) => {
+    // Trigger both functions when DOM is ready
+    window.addEventListener("load", () => {
         addConsoleButtonToMainUI();
-        addHighlightToolButtonToToolbar();
-        // Disconnect once both buttons are added
-        if (consoleButtonAdded && highlightToolButtonAdded) {
-            obs.disconnect();
-            window.modConsole.log('All mod buttons added. Observer disconnected.', 'system');
-        }
+        addSelectToolToSpecialCategory();
     });
 
-    window.modConsole.log('Starting MutationObserver to detect UI elements for button placement...', 'system');
-    observer.observe(observerTarget, observerConfig);
-
-    // Also try to add them once on DOMContentLoaded and load, in case elements
-    // are already there before the observer catches a mutation.
-    document.addEventListener('DOMContentLoaded', () => {
-        window.modConsole.log('DOMContentLoaded event fired.', 'system');
+    document.addEventListener("DOMContentLoaded", () => {
         addConsoleButtonToMainUI();
-        addHighlightToolButtonToToolbar();
-    });
-    window.addEventListener('load', () => {
-        window.modConsole.log('Window load event fired.', 'system');
-        addConsoleButtonToMainUI();
-        addHighlightToolButtonToToolbar();
+        addSelectToolToSpecialCategory();
     });
 
 })();
+    
