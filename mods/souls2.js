@@ -43,7 +43,7 @@ elements.soul = {
             }
         }
         
-        // Check for nearby humans to possess
+        // Check for nearby body parts to possess
         if (Math.random() < 0.02) {
             for (var i = 0; i < adjacentCoords.length; i++) {
                 var coords = adjacentCoords[i];
@@ -51,11 +51,11 @@ elements.soul = {
                 var y = pixel.y + coords[1];
                 if (!isEmpty(x,y,true)) {
                     var targetPixel = pixelMap[x][y];
-                    if (targetPixel.element === "human" && !targetPixel.possessed) {
-                        // Possess the human
+                    if ((targetPixel.element === "body" || targetPixel.element === "head") && !targetPixel.possessed) {
+                        // Possess the body part
                         targetPixel.possessed = true;
                         targetPixel.possessedBy = "soul";
-                        // Delete the soul pixel as it merges with the human
+                        // Delete the soul pixel as it merges with the body
                         deletePixel(pixel.x, pixel.y);
                         return;
                     }
@@ -100,6 +100,20 @@ elements.soul = {
                 pixel2.possessedBy = "soul";
                 deletePixel(pixel1.x, pixel1.y);
             }
+        } },
+        "body": { func:function(pixel1,pixel2) {
+            if (!pixel2.possessed && Math.random() < 0.3) {
+                pixel2.possessed = true;
+                pixel2.possessedBy = "soul";
+                deletePixel(pixel1.x, pixel1.y);
+            }
+        } },
+        "head": { func:function(pixel1,pixel2) {
+            if (!pixel2.possessed && Math.random() < 0.3) {
+                pixel2.possessed = true;
+                pixel2.possessedBy = "soul";
+                deletePixel(pixel1.x, pixel1.y);
+            }
         } }
     },
     temp: 29,
@@ -127,7 +141,7 @@ elements.ectoplasm = {
         "body": { attr2:{"panic":20} },
         "rock_wall": { elem1:null, elem2:"tombstone" }
     },
-    temp: -2,
+    temp: -10,
     category: "liquids",
     state: "liquid",
     density: 0.0001,
@@ -139,14 +153,45 @@ elements.ectoplasm = {
     emit: 2
 }
 
-// Modify human element to handle possession
+// Modify body element to handle possession
+if (elements.body) {
+    // Store original tick function if it exists
+    if (elements.body.tick) {
+        elements.body.originalTick = elements.body.tick;
+    }
+    elements.body.tick = function(pixel) {
+        if (pixel.possessed) {
+            // Chance to release soul and return to normal
+            if (Math.random() < 0.001) {
+                pixel.possessed = false;
+                delete pixel.possessedBy;
+                // Create a soul nearby
+                for (var i = 0; i < adjacentCoords.length; i++) {
+                    var coords = adjacentCoords[i];
+                    var x = pixel.x + coords[0];
+                    var y = pixel.y + coords[1];
+                    if (isEmpty(x,y)) {
+                        createPixel("soul",x,y);
+                        break;
+                    }
+                }
+            }
+        }
+        // Call original tick function if it exists
+        if (elements.body.originalTick) {
+            elements.body.originalTick(pixel);
+        }
+    };
+}
+
+// Modify human element to handle possession (only if it exists)
 if (elements.human) {
+    // Store original tick function if it exists
+    if (elements.human.tick) {
+        elements.human.originalTick = elements.human.tick;
+    }
     elements.human.tick = function(pixel) {
         if (pixel.possessed) {
-            // Change head color to pale blue when possessed
-            if (pixel.element === "head") {
-                pixel.color = "#b3d9ff";
-            }
             // Chance to release soul and return to normal
             if (Math.random() < 0.001) {
                 pixel.possessed = false;
@@ -168,51 +213,16 @@ if (elements.human) {
             elements.human.originalTick(pixel);
         }
     };
-} else {
-    // Define human element if it doesn't exist
-    elements.human = {
-        color: "#fdbcae",
-        tick: function(pixel) {
-            if (pixel.possessed) {
-                // Change head color to pale blue when possessed
-                if (pixel.element === "head") {
-                    pixel.color = "#b3d9ff";
-                }
-                // Chance to release soul and return to normal
-                if (Math.random() < 0.001) {
-                    pixel.possessed = false;
-                    delete pixel.possessedBy;
-                    // Create a soul nearby
-                    for (var i = 0; i < adjacentCoords.length; i++) {
-                        var coords = adjacentCoords[i];
-                        var x = pixel.x + coords[0];
-                        var y = pixel.y + coords[1];
-                        if (isEmpty(x,y)) {
-                            createPixel("soul",x,y);
-                            break;
-                        }
-                    }
-                }
-            }
-        },
-        category: "life",
-        state: "solid",
-        density: 1000,
-        conduct: 0.05,
-        tempHigh: 50,
-        stateHigh: "cooked_meat",
-        tempLow: -25,
-        stateLow: "frozen_meat",
-        burn: 5,
-        burnTime: 250,
-        breakInto: ["meat","bone","blood"]
-    };
 }
 
 elements.head.breakInto = "soul";
 elements.head.burnInto = "soul";
 elements.head.stateHigh = "soul";
 elements.head.stateLow = "soul";
+// Store original head tick function if it exists
+if (elements.head.tick) {
+    elements.head.originalTick = elements.head.tick;
+}
 elements.head.tick = function(pixel) {
     if (pixel.possessed) {
         // Change color to pale blue when possessed
@@ -248,9 +258,12 @@ elements.head.onChange = function(pixel,element) {
     }
 }
 
-elements.bless.reactions.soul = { elem2:"human" }
-elements.bless.reactions.ectoplasm = { elem2:null }
-elements.bless.reactions.tombstone = { elem2:"rock_wall" }
+// Check if bless element exists before adding reactions
+if (elements.bless) {
+    elements.bless.reactions.soul = { elem2:"human" };
+    elements.bless.reactions.ectoplasm = { elem2:null };
+    elements.bless.reactions.tombstone = { elem2:"rock_wall" };
+}
 
 elements.tombstone = {
     color: ["#5f5f5f","#434343","#282828"],
