@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Sandboxels Console & Selection Mod (with Toolbar Button)
+// @name         Sandboxels Console Mod
 // @namespace    http://tampermonkey.net/
-// @version      1.5
-// @description  Adds a custom in-game console for commands and logging, plus an area selection tool activated via a toolbar button.
+// @version      1.3
+// @description  Adds a custom in-game console for commands and logging in Sandboxels.
 // @author       ChatGPT / Your Name
 // @match        https://sandboxels.com/*
 // @grant        none
@@ -11,14 +11,13 @@
 (function() {
     'use strict';
 
-    // --- MOD CONSOLE OBJECT ---
+    // Create console object
     window.modConsole = {
         logs: [],
         commands: {},
         isOpen: false,
         element: null,
-        storedRange: null, // Stores the selected area range {x1, y1, x2, y2}
-
+        
         // Add log entry
         log: function(message, type = 'info') {
             const timestamp = new Date().toLocaleTimeString();
@@ -29,13 +28,18 @@
             };
             this.logs.push(logEntry);
             
+            // Keep only last 100 logs
             if (this.logs.length > 100) {
-                this.logs.shift(); // Keep only last 100 logs
+                this.logs.shift();
             }
             
+            // Update console display if open
             if (this.isOpen && this.element) {
                 this.updateDisplay();
             }
+            
+            // Also log to browser console
+            // console.log(`[ModConsole ${timestamp}] ${message}`); // Uncomment for verbose browser console logging
         },
         
         // Register a command
@@ -44,7 +48,7 @@
                 description: description,
                 callback: callback
             };
-            this.log(`Command registered: ${name}: ${description}`, 'system');
+            this.log(`Command registered: ${name} - ${description}`, 'system');
         },
         
         // Execute a command
@@ -53,8 +57,6 @@
             const command = parts[0];
             const args = parts.slice(1);
             
-            this.log(`> ${input}`, 'command'); // Log the command input
-
             if (command === 'help') {
                 this.log('Available commands:', 'info');
                 for (const [name, cmd] of Object.entries(this.commands)) {
@@ -66,7 +68,6 @@
             if (command === 'clear') {
                 this.logs = [];
                 this.updateDisplay();
-                this.log('Console cleared.', 'system');
                 return;
             }
             
@@ -87,6 +88,7 @@
             if (this.element) return;
             this.log('Creating Mod Console UI...', 'system');
 
+            // Create console container
             const consoleDiv = document.createElement('div');
             consoleDiv.id = 'mod-console';
             consoleDiv.style.cssText = `
@@ -101,16 +103,13 @@
                 color: #fff;
                 font-family: 'Courier New', monospace;
                 font-size: 12px;
-                display: none;
+                display: none; /* Hidden by default */
                 z-index: 10000;
                 flex-direction: column;
-                box-shadow: 0 0 15px rgba(0,255,255,0.3);
-                resize: both;
-                overflow: hidden;
-                min-width: 250px;
-                min-height: 150px;
+                box-shadow: 0 0 15px rgba(0,255,255,0.3); /* Add a subtle glow */
             `;
             
+            // Create header
             const header = document.createElement('div');
             header.style.cssText = `
                 background: #333;
@@ -119,13 +118,14 @@
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                cursor: grab;
+                cursor: grab; /* Make header draggable */
             `;
             header.innerHTML = `
                 <span style="font-weight: bold;">Mod Console</span>
                 <button id="console-close" style="background: #f44; color: white; border: none; padding: 2px 6px; cursor: pointer; border-radius: 3px;">×</button>
             `;
             
+            // Create log display
             const logDisplay = document.createElement('div');
             logDisplay.id = 'console-logs';
             logDisplay.style.cssText = `
@@ -134,9 +134,9 @@
                 padding: 10px;
                 background: rgba(0, 0, 0, 0.8);
                 line-height: 1.4;
-                word-wrap: break-word;
             `;
             
+            // Create input area
             const inputArea = document.createElement('div');
             inputArea.style.cssText = `
                 padding: 10px;
@@ -156,9 +156,10 @@
                 padding: 5px;
                 border-radius: 4px;
                 font-family: inherit;
-                outline: none;
+                outline: none; /* Remove default focus outline */
             `;
             
+            // Assemble console
             inputArea.appendChild(input);
             consoleDiv.appendChild(header);
             consoleDiv.appendChild(logDisplay);
@@ -189,12 +190,14 @@
                 header.style.cursor = 'grab';
             });
 
+            // Add event listeners
             document.getElementById('console-close').onclick = () => this.close();
             
             input.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     const command = input.value.trim();
                     if (command) {
+                        this.log(`> ${command}`, 'command');
                         this.executeCommand(command);
                         input.value = '';
                     }
@@ -203,215 +206,320 @@
             
             // Add toggle key listener (F12 or `)
             document.addEventListener('keydown', (e) => {
+                // Prevent F12 from opening dev tools if console is open or about to open
                 if ((e.key === 'F12' || e.key === '`') && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
                     e.preventDefault();
                     this.toggle();
                 }
             });
             this.log('Mod Console UI created.', 'system');
+        },
+        
+        // Update display
+        updateDisplay: function() {
+            const logDisplay = document.getElementById('console-logs');
+            if (!logDisplay) return;
+            
+            logDisplay.innerHTML = '';
+            this.logs.forEach(log => {
+                const logEntry = document.createElement('div');
+                logEntry.style.cssText = `
+                    margin: 2px 0;
+                    color: ${this.getLogColor(log.type)};
+                `;
+                logEntry.textContent = `[${log.timestamp}] ${log.message}`;
+                logDisplay.appendChild(logEntry);
+            });
+            
+            // Scroll to bottom
+            logDisplay.scrollTop = logDisplay.scrollHeight;
+        },
+        
+        // Get color for log type
+        getLogColor: function(type) {
+            switch(type) {
+                case 'error': return '#ff4444';
+                case 'warning': return '#ffaa00';
+                case 'success': return '#44ff44';
+                case 'command': return '#4444ff';
+                case 'system': return '#00ffff'; // Brighter cyan for system messages
+                default: return '#ffffff';
+            }
+        },
+        
+        // Toggle console
+        toggle: function() {
+            if (this.isOpen) {
+                this.close();
+            } else {
+                this.open();
+            }
+        },
+        
+        // Open console
+        open: function() {
+            if (!this.element) this.createUI();
+            this.element.style.display = 'flex';
+            this.isOpen = true;
+            this.updateDisplay();
+            // Focus input after a slight delay to ensure it's rendered and ready
+            setTimeout(() => {
+                const inputElement = document.getElementById('console-input');
+                if (inputElement) {
+                    inputElement.focus();
+                }
+            }, 50);
+            this.log('Mod Console opened.', 'system');
+        },
+        
+        // Close console
+        close: function() {
+            if (this.element) {
+                this.element.style.display = 'none';
+            }
+            this.isOpen = false;
+            this.log('Mod Console closed.', 'system');
         }
     };
 
-    // --- AREA SELECTION LOGIC ---
-    let isHighlightToolActive = false; // Controls if the selection drag works
-    let isDraggingSelection = false; // True when actually dragging to select
-    let startPixelX, startPixelY;
-    let selectionHighlightDiv = null;
+    // Initialize console immediately
+    window.modConsole.createUI();
 
-    function createSelectionHighlight() {
-        if (!selectionHighlightDiv) {
-            selectionHighlightDiv = document.createElement('div');
-            selectionHighlightDiv.id = 'mod-selection-highlight';
-            selectionHighlightDiv.style.cssText = `
-                position: absolute;
-                background-color: rgba(255, 255, 0, 0.2); /* Faint transparent yellow */
-                border: 1px dashed rgba(255, 255, 0, 0.5); /* Dashed border */
-                z-index: 9998; /* Below console, above game */
-                pointer-events: none; /* Crucial: allows clicks/mouse events to pass through to the game */
-                display: none; /* Hidden by default */
-            `;
-            document.body.appendChild(selectionHighlightDiv);
+    // Register default commands
+    // These commands rely on global Sandboxels functions/variables (e.g., elements, mousePos)
+    // which are typically available when the userscript runs.
+    window.modConsole.registerCommand('spawn', 'Spawn element at cursor (usage: spawn <element> [amount])', function(args) {
+        if (args.length === 0) {
+            window.modConsole.log('Usage: spawn <element> [amount]', 'error');
+            return;
         }
-        return selectionHighlightDiv;
-    }
-
-    function updateSelectionHighlight(x1, y1, x2, y2) {
-        const highlight = createSelectionHighlight();
-        highlight.style.display = 'block';
-
-        const minX = Math.min(x1, x2);
-        const maxX = Math.max(x1, x2);
-        const minY = Math.min(y1, y2);
-        const maxY = Math.max(y1, y2);
-
-        highlight.style.left = `${minX}px`;
-        highlight.style.top = `${minY}px`;
-        highlight.style.width = `${maxX - minX}px`;
-        highlight.style.height = `${maxY - minY}px`;
-    }
-
-    function clearSelectionHighlight() {
-        if (selectionHighlightDiv) {
-            selectionHighlightDiv.style.display = 'none';
+        
+        const element = args[0];
+        const amount = parseInt(args[1]) || 1;
+        
+        if (typeof elements === 'undefined' || !elements[element]) {
+            window.modConsole.log(`Element '${element}' does not exist or 'elements' is not defined.`, 'error');
+            return;
         }
-    }
-
-    // Mouse down event for selection
-    document.addEventListener('mousedown', (e) => {
-        // Only start selection if the highlight tool is active AND not clicking on console/its button
-        if (!isHighlightToolActive || e.target.closest('#mod-console') || e.target.closest('#console-mod-button') || e.target.closest('#highlight-tool-button')) {
+        
+        // Spawn at mouse position or center
+        const x = typeof mousePos !== 'undefined' && mousePos ? mousePos.x : (typeof width !== 'undefined' ? width/2 : 0);
+        const y = typeof mousePos !== 'undefined' && mousePos ? mousePos.y : (typeof height !== 'undefined' ? height/2 : 0);
+        
+        if (typeof createPixel === 'undefined' || typeof isEmpty === 'undefined') {
+            window.modConsole.log('Game functions (createPixel, isEmpty) not available.', 'error');
             return;
         }
 
-        // Check if the mouse is over the game canvas (assuming 'canvas' is the element for the game area)
-        const gameCanvas = document.querySelector('canvas');
-        if (!gameCanvas || !gameCanvas.contains(e.target)) {
-            // If highlight tool is active but click is outside canvas, just log and return.
-            // Do not clear stored range unless explicitly commanded or new canvas drag.
-            window.modConsole.log('Click not on game canvas, skipping selection drag.', 'info');
-            return;
+        for (let i = 0; i < amount; i++) {
+            const offsetX = Math.floor(Math.random() * 10) - 5;
+            const offsetY = Math.floor(Math.random() * 10) - 5;
+            if (isEmpty(x + offsetX, y + offsetY)) {
+                createPixel(element, x + offsetX, y + offsetY);
+            }
         }
-
-        isDraggingSelection = true;
-        startPixelX = e.clientX;
-        startPixelY = e.clientY;
         
-        // Clear any previous selection highlight and stored range when a new drag starts
-        window.modConsole.storedRange = null;
-        clearSelectionHighlight();
-        
-        // Change cursor to crosshair
-        document.body.style.cursor = 'crosshair';
+        window.modConsole.log(`Spawned ${amount} ${element}(s)`, 'success');
     });
 
-    // Mouse move event for selection
-    document.addEventListener('mousemove', (e) => {
-        if (!isDraggingSelection) return;
-
-        updateSelectionHighlight(startPixelX, startPixelY, e.clientX, e.clientY);
-    });
-
-    // Mouse up event for selection
-    document.addEventListener('mouseup', (e) => {
-        if (!isDraggingSelection) return;
-        isDraggingSelection = false;
-        document.body.style.cursor = ''; // Reset cursor
-
-        const endPixelX = e.clientX;
-        const endPixelY = e.clientY;
-
-        const x1 = Math.min(startPixelX, endPixelX);
-        const y1 = Math.min(startPixelY, endPixelY);
-        const x2 = Math.max(startPixelX, endPixelX);
-        const y2 = Math.max(startPixelY, endPixelY);
-
-        // Store the range in modConsole.storedRange
-        // Coordinates here are raw screen pixels. Sandboxels commands will use these.
-        window.modConsole.storedRange = {
-            x1: Math.floor(x1),
-            y1: Math.floor(y1),
-            x2: Math.floor(x2),
-            y2: Math.floor(y2)
-        };
-        window.modConsole.log(`Area selected: [${window.modConsole.storedRange.x1}, ${window.modConsole.storedRange.y1}, ${window.modConsole.storedRange.x2}, ${window.modConsole.storedRange.y2}]`, 'success');
+    window.modConsole.registerCommand('clear_area', 'Clear all pixels in an area (usage: clear_area <size>)', function(args) {
+        const size = parseInt(args[0]) || 10;
+        const x = typeof mousePos !== 'undefined' && mousePos ? mousePos.x : (typeof width !== 'undefined' ? width/2 : 0);
+        const y = typeof mousePos !== 'undefined' && mousePos ? mousePos.y : (typeof height !== 'undefined' ? height/2 : 0);
         
-        // Keep the highlight visible until a new selection or clear command
-        updateSelectionHighlight(x1, y1, x2, y2);
-    });
-
-    // --- CONSOLE COMMANDS ---
-        // --- Add SELECT tool to Special category in Sandboxels ---
-    function addSelectToolToSpecialCategory() {
-        if (typeof toolOrder === "undefined" || typeof tools === "undefined") {
-            window.modConsole.log("Sandboxels toolOrder/tools not yet available. Retrying shortly...", "warning");
-            setTimeout(addSelectToolToSpecialCategory, 1000);
+        if (typeof deletePixel === 'undefined' || typeof isEmpty === 'undefined') {
+            window.modConsole.log('Game functions (deletePixel, isEmpty) not available.', 'error');
             return;
         }
 
-        if (tools.select) {
-            window.modConsole.log("SELECT tool already exists. Skipping redefinition.", "info");
-            return;
-        }
-
-        tools.select = {
-            name: "Select",
-            category: "special",
-            tool: function () {
-                isHighlightToolActive = !isHighlightToolActive;
-
-                if (isHighlightToolActive) {
-                    window.modConsole.log("SELECT tool activated. Drag on canvas to select an area.", "info");
-                } else {
-                    isDraggingSelection = false;
-                    window.modConsole.log("SELECT tool deactivated.", "info");
+        let cleared = 0;
+        for (let i = x - size; i <= x + size; i++) {
+            for (let j = y - size; j <= y + size; j++) {
+                if (!isEmpty(i, j)) {
+                    deletePixel(i, j);
+                    cleared++;
                 }
-            },
-            desc: "Drag to select an area for console commands"
-        };
+            }
+        }
+        
+        window.modConsole.log(`Cleared ${cleared} pixels in ${size*2}x${size*2} area`, 'success');
+    });
 
-        if (!toolOrder.special.includes("select")) {
-            toolOrder.special.push("select");
+    window.modConsole.registerCommand('list_elements', 'List all available elements', function(args) {
+        if (typeof elements === 'undefined') {
+            window.modConsole.log("'elements' object not available.", 'error');
+            return;
+        }
+        const elementList = Object.keys(elements).sort();
+        window.modConsole.log(`Available elements (${elementList.length}):`, 'info');
+        elementList.forEach(element => {
+            window.modConsole.log(`  ${element}`, 'info');
+        });
+    });
+
+    window.modConsole.registerCommand('element_info', 'Get information about an element (usage: element_info <element>)', function(args) {
+        if (args.length === 0) {
+            window.modConsole.log('Usage: element_info <element>', 'error');
+            return;
+        }
+        
+        const element = args[0];
+        if (typeof elements === 'undefined' || !elements[element]) {
+            window.modConsole.log(`Element '${element}' does not exist or 'elements' is not defined.`, 'error');
+            return;
+        }
+        
+        const info = elements[element];
+        window.modConsole.log(`Information for '${element}':`, 'info');
+        window.modConsole.log(`  Color: ${info.color}`, 'info');
+        window.modConsole.log(`  Category: ${info.category}`, 'info');
+        window.modConsole.log(`  State: ${info.state}`, 'info');
+        window.modConsole.log(`  Density: ${info.density}`, 'info');
+        window.modConsole.log(`  Temperature: ${info.temp}`, 'info');
+    });
+
+    window.modConsole.registerCommand('pause', 'Pause/unpause the simulation', function(args) {
+        if (typeof paused === 'undefined') {
+            window.modConsole.log("'paused' variable not available.", 'error');
+            return;
+        }
+        paused = !paused;
+        window.modConsole.log(`Simulation ${paused ? 'paused' : 'resumed'}`, 'success');
+    });
+
+    window.modConsole.registerCommand('reset', 'Clear the entire simulation', function(args) {
+        if (typeof confirm !== 'function' || typeof width === 'undefined' || typeof height === 'undefined' || typeof isEmpty === 'undefined' || typeof deletePixel === 'undefined') {
+            window.modConsole.log('Required game functions or variables (confirm, width, height, isEmpty, deletePixel) not available.', 'error');
+            return;
         }
 
-        window.modConsole.log("SELECT tool added to Special category.", "success");
-    }
+        if (confirm('Are you sure you want to clear everything?')) {
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    if (!isEmpty(x, y)) {
+                        deletePixel(x, y);
+                    }
+                }
+            }
+            window.modConsole.log('Simulation cleared', 'success');
+        }
+    });
 
-    // Add Console button to the UI as before
+    // Log console initialization
+    window.modConsole.log('Mod Console initialized successfully!', 'system');
+    window.modConsole.log('Press F12 or ` to toggle console', 'system');
+    window.modConsole.log('Type "help" for available commands', 'system');
+
+
+    // --- Automatic button placement logic (generalized and robust) ---
+
+    let consoleButtonAdded = false; // Flag to ensure the button is only added once
+
     function addConsoleButtonToMainUI() {
-        if (document.getElementById("console-mod-button")) return;
-        let targetContainer = null;
-        const selectors = [ '#controls', '#ui-panel', '.main-controls', '.sidebar', '#game-ui', '.game-wrapper' ];
-        for (const selector of selectors) {
-            targetContainer = document.querySelector(selector);
-            if (targetContainer) break;
+        if (consoleButtonAdded) {
+            window.modConsole.log('Console button already added.', 'system');
+            return;
         }
+
+        window.modConsole.log('Attempting to add Console button to UI...', 'system');
+        let targetContainer = null;
+
+        // Prioritized list of common UI container selectors in games
+        const commonUISelctors = [
+            '#controls', // Very common ID for control panels
+            '#ui-panel', // Another common ID
+            '.main-controls', // Common class for main controls
+            '.sidebar', // If there's a distinct sidebar
+            '#game-ui', // General game UI container
+            '.game-wrapper', // Common wrapper
+            // Consider more specific common elements like the brush panel if known to be stable
+            document.querySelector('#brushControls') ? '#brushControls' : null, // If brush controls exist
+            document.querySelector('#toolControls') ? '#toolControls' : null, // If general tool controls exist
+        ].filter(Boolean); // Remove any null entries
+
+        for (const selector of commonUISelctors) {
+            targetContainer = document.querySelector(selector);
+            if (targetContainer) {
+                window.modConsole.log(`Found suitable UI container: "${selector}"`, 'system');
+                break;
+            }
+        }
+        
+        // Fallback: If no specific UI container found, append to body with fixed position
         if (!targetContainer) {
-            window.modConsole.log("No UI container found. Falling back to body.", "warning");
+            window.modConsole.log('No specific UI container found. Falling back to appending to document.body with fixed positioning.', 'warning');
             targetContainer = document.body;
         }
 
-        const btn = document.createElement('button');
-        btn.id = 'console-mod-button';
-        btn.textContent = 'Console';
-        btn.style.cssText = `
-            padding: 6px 10px;
-            margin: 2px;
+        // --- Create and add the button ---
+        const consoleButton = document.createElement('button');
+        consoleButton.id = 'console-mod-button'; // Unique ID for the button
+        consoleButton.textContent = 'Console';
+        
+        // Basic styling to blend in
+        consoleButton.style.cssText = `
+            background-color: #555;
+            color: white;
+            border: 1px solid #777;
+            padding: 8px 15px;
+            margin: 5px; /* Add margin for spacing */
             cursor: pointer;
             border-radius: 5px;
             font-size: 14px;
-            font-weight: bold;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-            color: white;
-            border: 1px solid #777;
-            background-color: #555;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 2px 2px rgba(0,0,0,0.3);
-            min-width: 80px;
+            transition: background-color 0.2s;
+            min-width: 80px; /* Give it a consistent width */
+            box-shadow: 0 0 5px rgba(0,255,255,0.2); /* Subtle glow */
         `;
-        btn.onmouseover = () => btn.style.backgroundColor = '#777';
-        btn.onmouseout = () => btn.style.backgroundColor = '#555';
-        btn.onclick = () => window.modConsole.toggle();
 
+        // If appended to body, give it a fixed position (e.g., top-left or top-right corner)
         if (targetContainer === document.body) {
-            btn.style.position = 'fixed';
-            btn.style.top = '10px';
-            btn.style.left = '10px';
-            btn.style.zIndex = '9999';
+             consoleButton.style.position = 'fixed';
+             consoleButton.style.top = '10px';
+             consoleButton.style.left = '10px'; // Place it top-left if no dedicated UI panel
+             consoleButton.style.zIndex = '9999'; // Ensure it's on top
         }
 
-        targetContainer.appendChild(btn);
-        window.modConsole.log("Console button added to UI.", "system");
+        consoleButton.onmouseover = () => consoleButton.style.backgroundColor = '#777';
+        consoleButton.onmouseout = () => consoleButton.style.backgroundColor = '#555';
+        
+        // Add click event to open the console
+        consoleButton.onclick = () => window.modConsole.toggle();
+
+        targetContainer.appendChild(consoleButton);
+        consoleButtonAdded = true; // Set flag
+        window.modConsole.log('Console button successfully added to UI.', 'system');
     }
 
-    // Trigger both functions when DOM is ready
-    window.addEventListener("load", () => {
+    // Use a MutationObserver for robust button placement.
+    // This observes the document body for changes and tries to add the button
+    // once the likely UI elements are present.
+    const observerConfig = { childList: true, subtree: true };
+    const observerTarget = document.body;
+
+    const observer = new MutationObserver((mutations, obs) => {
+        // Attempt to add the button. The function itself checks if it was already added.
         addConsoleButtonToMainUI();
-        addSelectToolToSpecialCategory();
+        
+        // If the button has been successfully added, disconnect the observer.
+        if (consoleButtonAdded) {
+            obs.disconnect();
+            window.modConsole.log('MutationObserver disconnected (button added).', 'system');
+        }
     });
 
-    document.addEventListener("DOMContentLoaded", () => {
+    // Start observing the document body
+    window.modConsole.log('Starting MutationObserver to detect UI elements...', 'system');
+    observer.observe(observerTarget, observerConfig);
+
+    // Also try to add it once on DOMContentLoaded and load, in case elements
+    // are already there before the observer catches a mutation.
+    document.addEventListener('DOMContentLoaded', () => {
+        window.modConsole.log('DOMContentLoaded event fired.', 'system');
         addConsoleButtonToMainUI();
-        addSelectToolToSpecialCategory();
+    });
+    window.addEventListener('load', () => {
+        window.modConsole.log('Window load event fired.', 'system');
+        addConsoleButtonToMainUI();
     });
 
-})();
-    
+})(); // End of IIFE (Immediately Invoked Function Expression)
