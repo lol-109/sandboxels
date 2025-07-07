@@ -1,3 +1,8 @@
+// Log to mod console if available
+if (window.modConsole) {
+    modConsole.log('Soul Possession Mod loading...', 'system');
+}
+
 elements.soul = {
     color: "#87fff9",
     tick: function(pixel) {
@@ -55,6 +60,9 @@ elements.soul = {
                         // Possess the body part
                         targetPixel.possessed = true;
                         targetPixel.possessedBy = "soul";
+                        if (window.modConsole) {
+                            modConsole.log(`Soul possessed ${targetPixel.element} at (${x},${y})`, 'success');
+                        }
                         // Delete the soul pixel as it merges with the body
                         deletePixel(pixel.x, pixel.y);
                         return;
@@ -141,7 +149,7 @@ elements.ectoplasm = {
         "body": { attr2:{"panic":20} },
         "rock_wall": { elem1:null, elem2:"tombstone" }
     },
-    temp: -10,
+    temp: -2,
     category: "liquids",
     state: "liquid",
     density: 0.0001,
@@ -165,6 +173,9 @@ if (elements.body) {
             if (Math.random() < 0.001) {
                 pixel.possessed = false;
                 delete pixel.possessedBy;
+                if (window.modConsole) {
+                    modConsole.log(`Soul released from ${pixel.element} at (${pixel.x},${pixel.y})`, 'info');
+                }
                 // Create a soul nearby
                 for (var i = 0; i < adjacentCoords.length; i++) {
                     var coords = adjacentCoords[i];
@@ -283,4 +294,85 @@ elements.tombstone = {
         releaseElement(pixel,"soul");
     },
     buttonGlow: "#87fff9"
+}
+
+// Register soul-specific commands
+if (window.modConsole) {
+    modConsole.registerCommand('possess', 'Force possession of nearby body parts (usage: possess [range])', function(args) {
+        const range = parseInt(args[0]) || 5;
+        const x = mousePos ? mousePos.x : width/2;
+        const y = mousePos ? mousePos.y : height/2;
+        
+        let possessed = 0;
+        for (let i = x - range; i <= x + range; i++) {
+            for (let j = y - range; j <= y + range; j++) {
+                if (!isEmpty(i, j)) {
+                    const pixel = pixelMap[i][j];
+                    if ((pixel.element === 'body' || pixel.element === 'head') && !pixel.possessed) {
+                        pixel.possessed = true;
+                        pixel.possessedBy = 'soul';
+                        possessed++;
+                    }
+                }
+            }
+        }
+        modConsole.log(`Possessed ${possessed} body parts in range ${range}`, 'success');
+    });
+    
+    modConsole.registerCommand('exorcise', 'Remove all possessions (usage: exorcise [range])', function(args) {
+        const range = parseInt(args[0]) || 5;
+        const x = mousePos ? mousePos.x : width/2;
+        const y = mousePos ? mousePos.y : height/2;
+        
+        let exorcised = 0;
+        for (let i = x - range; i <= x + range; i++) {
+            for (let j = y - range; j <= y + range; j++) {
+                if (!isEmpty(i, j)) {
+                    const pixel = pixelMap[i][j];
+                    if (pixel.possessed) {
+                        pixel.possessed = false;
+                        delete pixel.possessedBy;
+                        exorcised++;
+                        
+                        // Create a soul nearby
+                        for (let k = 0; k < 8; k++) {
+                            const coords = adjacentCoords[k];
+                            const soulX = i + coords[0];
+                            const soulY = j + coords[1];
+                            if (isEmpty(soulX, soulY)) {
+                                createPixel("soul", soulX, soulY);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        modConsole.log(`Exorcised ${exorcised} possessions in range ${range}`, 'success');
+    });
+    
+    modConsole.registerCommand('soul_count', 'Count souls and possessions', function(args) {
+        let souls = 0;
+        let possessions = 0;
+        
+        for (let x = 0; x < width; x++) {
+            for (let y = 0; y < height; y++) {
+                if (!isEmpty(x, y)) {
+                    const pixel = pixelMap[x][y];
+                    if (pixel.element === 'soul') {
+                        souls++;
+                    }
+                    if (pixel.possessed) {
+                        possessions++;
+                    }
+                }
+            }
+        }
+        
+        modConsole.log(`Active souls: ${souls}`, 'info');
+        modConsole.log(`Active possessions: ${possessions}`, 'info');
+    });
+    
+    modConsole.log('Soul Possession Mod loaded successfully!', 'system');
+    modConsole.log('Commands: possess, exorcise, soul_count', 'system');
 }
