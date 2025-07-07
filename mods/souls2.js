@@ -102,7 +102,7 @@ elements.soul = {
             }
         } }
     },
-    temp: -10,
+    temp: 29,
     hardness: 100,
     flippableX: true,
     glow: true,
@@ -127,7 +127,7 @@ elements.ectoplasm = {
         "body": { attr2:{"panic":20} },
         "rock_wall": { elem1:null, elem2:"tombstone" }
     },
-    temp: 29,
+    temp: -2,
     category: "liquids",
     state: "liquid",
     density: 0.0001,
